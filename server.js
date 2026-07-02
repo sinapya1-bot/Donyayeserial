@@ -11,92 +11,103 @@ const MANIFEST = {
   id: "com.donyayeserial.addon",
   version: "1.0.0",
   name: "Donyaye Serial",
-  description: "استریم مستقیم از آرشیو جامع دنیای سریال",
+  description: "استریم مستقیم فیلم و سریال از آرشیو متنی دنیای سریال",
   resources: ["stream"],
   types: ["movie", "series"],
   idPrefixes: ["tt"]
 };
 
-app.get('/', (req, res) => res.send('Archive Addon Active!'));
+app.get('/', (req, res) => res.send('Addon Ready!'));
 app.get('/manifest.json', (req, res) => res.json(MANIFEST));
 
-// تغییر پترن آدرس برای اینکه استریمیو هر فرمتی از آی‌دی سریال یا فیلم فرستاد، خراب نشود
 app.get('/stream/:type/:id', async (req, res) => {
   const { type } = req.params;
-  let id = req.params.id;
-  
-  // حذف پسوند .json از انتهای آی‌دی در صورت وجود
-  if (id.endsWith('.json')) {
-    id = id.replace('.json', '');
-  }
-
+  let id = req.params.id.replace('.json', '');
   const streams = [];
-  console.log(`=== Request received for Type: ${type}, ID: ${id} ===`);
+
+  // دریافت آی‌دی اصلی فیلم (مثلاً tt0069947)
+  const targetImdbId = id.split(':')[0].toLowerCase();
+  console.log(`Searching for block of IMDb ID: ${targetImdbId}`);
 
   try {
-    // اگر سریال باشد، آی‌دی حاوی فصل و قسمت است (مثلا tt12345:1:1)، پس بخش اصلی tt را جدا می‌کنیم
-    const mainImdbId = id.split(':')[0];
+    const archiveUrl = "https://dls2.aparatchi-dlcenter.top/DonyayeSerial/donyaye_serial_all_archive.html";
+    const archiveResponse = await axios.get(archiveUrl, { 
+      headers: { 'User-Agent': 'Mozilla/5.0' }, 
+      timeout: 10000 
+    });
+    
+    const $ = cheerio.load(archiveResponse.data);
 
-    // ۱. گرفتن نام فیلم یا سریال از سینمتا
-    const metaResponse = await axios.get(`https://v3-cinemeta.strem.io/meta/${type}/${mainImdbId}.json`, { timeout: 4000 });
-    let titleName = metaResponse.data?.meta?.name;
-    console.log(`Found Title Name: ${titleName}`);
-
-    if (titleName) {
-      const cleanName = titleName.replace(/[^a-zA-Z0-9\s]/g, '').toLowerCase();
-      const keywords = cleanName.split(/\s+/).filter(word => word.length > 2);
-      console.log(`Keywords to match: ${JSON.stringify(keywords)}`);
-
-      // ۲. خواندن فایل آرشیو بزرگ
-      const archiveUrl = "https://dls2.aparatchi-dlcenter.top/DonyayeSerial/donyaye_serial_all_archive.html";
-      const archiveResponse = await axios.get(archiveUrl, { 
-        headers: { 'User-Agent': 'Mozilla/5.0' }, 
-        timeout: 8000 
-      });
-      
-      const $ = cheerio.load(archiveResponse.data);
-
-      // ۳. گشتن هوشمند در تمام لینک‌ها
-      $('a').each((index, element) => {
-        let link = $(element).attr('href');
-        let text = $(element).text().trim().toLowerCase();
-
-        if (link && (link.includes('.mkv') || link.includes('.mp4'))) {
-          // چک کردن کلمات کلیدی اسم
-          const isMatch = keywords.every(keyword => text.includes(keyword) || link.toLowerCase().includes(keyword));
-
-          if (isMatch) {
-            // اگر سریال است، چک کنیم که شماره فصل و قسمت هم در نام فایل باشد (مثلاً S05E01)
-            if (type === 'series' && id.includes(':')) {
-              const parts = id.split(':'); // [tt12345, season, episode]
-              const season = parts[1].padStart(2, '0'); // تبدیل 5 به 05
-              const episode = parts[2].padStart(2, '0'); // تبدیل 1 به 01
-              
-              const sPattern = `s${season}`;
-              const ePattern = `e${episode}`;
-              
-              // اگر لینک حاوی شماره فصل و قسمت نبود، ردش کن بره
-              if (!text.includes(sPattern) && !link.toLowerCase().includes(sPattern)) return;
-              if (!text.includes(ePattern) && !link.toLowerCase().includes(ePattern)) return;
-            }
-
-            if (link.startsWith('//')) link = 'https:' + link;
-            if (!link.startsWith('http')) {
-              link = 'https://dls2.aparatchi-dlcenter.top/DonyayeSerial/' + link;
-            }
-
-            streams.push({
-              name: `Donyaye Serial`,
-              title: $(element).text().trim() || "پخش مستقیم",
-              url: link,
-              behaviorHints: { notWebReady: link.includes('.mkv') }
-            });
-          }
+    // کل متن صفحه را بر اساس خطوط یا المان‌ها پیمایش می‌کنیم
+    // راهکار: پیدا کردن المان متنی که شامل این آی‌دی است
+    let targetElement = null;
+    
+    $('*').each((i, el) => {
+      const text = $(el).text();
+      if (text.includes(`IMDb Code: ${targetImdbId}`) || text.includes(`tt` + targetImdbId.replace('tt', ''))) {
+        // پیدا کردن دقیق‌ترین المانی که این متن را دارد (ترجیحاً المان‌های بدون فرزند بزرگ)
+        if ($(el).children().length <= 3) {
+          targetElement = el;
         }
-      });
+      }
+    });
+
+    if (targetElement) {
+      console.log(`Found the movie block! Extracting links until next movie...`);
+      
+      // حرکت به المان‌های بعدی برای جمع‌آوری لینک‌ها تا زمانی که به یک فیلم جدید برسیم
+      let current = $(targetElement).next();
+      let foundNextMovie = false;
+
+      while (current.length && !foundNextMovie) {
+        // اگر به مشخصات فیلم بعدی رسیدیم، حلقه را متوقف کن
+        if (current.text().includes('IMDb Code: tt') || current.text().match(/\d+\.\s+[A-Z]/)) {
+          foundNextMovie = true;
+          break;
+        }
+
+        // پیدا کردن تمام تگ‌های لینک (<a>) در این بخش
+        const linksInCurrent = current.find('a').length ? current.find('a') : (current.is('a') ? current : []);
+        
+        if (linksInCurrent.length) {
+          $(linksInCurrent).each((i, aEl) => {
+            let link = $(aEl).attr('href');
+            let text = $(aEl).text().trim();
+
+            if (link && (link.includes('.mkv') || link.includes('.mp4'))) {
+              
+              // فیلتر فصل و قسمت برای سریال‌ها
+              if (type === 'series' && id.includes(':')) {
+                const parts = id.split(':');
+                const season = parts[1].padStart(2, '0');
+                const episode = parts[2].padStart(2, '0');
+                const sStr = `s${season}`;
+                const eStr = `e${episode}`;
+                
+                if (!link.toLowerCase().includes(sStr) && !link.toLowerCase().includes(eStr)) return;
+              }
+
+              // اصلاح لینک‌های نسبی به مطلق
+              if (link.startsWith('//')) link = 'https:' + link;
+              if (!link.startsWith('http')) {
+                link = 'https://dls2.aparatchi-dlcenter.top/DonyayeSerial/' + link;
+              }
+
+              streams.push({
+                name: `Donyaye Serial`,
+                title: text || "کیفیت پخش",
+                url: link,
+                behaviorHints: { notWebReady: link.includes('.mkv') }
+              });
+            }
+          });
+        }
+
+        current = current.next();
+      }
     }
 
-    console.log(`Matches found: ${streams.length}`);
+    console.log(`Successfully parsed links count: ${streams.length}`);
     res.json({ streams });
   } catch (e) {
     console.log(`Error: ${e.message}`);
@@ -104,4 +115,4 @@ app.get('/stream/:type/:id', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log('Server is up and running!'));
+app.listen(PORT, () => console.log('Sequential IMDb Scraper Running...'));
