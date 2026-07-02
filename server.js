@@ -25,15 +25,17 @@ app.get('/stream/:type/:id.json', async (req, res) => {
   const streams = [];
 
   try {
-    // ۱. گرفتن نام فیلم از سینمتا (استریمیو)
+    // ۱. گرفتن نام فیلم از سینمتا
     const metaResponse = await axios.get(`https://v3-cinemeta.strem.io/meta/${type}/${id}.json`, { timeout: 4000 });
     let movieName = metaResponse.data?.meta?.name;
 
     if (movieName) {
-      // پاک‌سازی جزئی نام برای سرچ بهتر (مثلا حذف سال از نام فیلم)
-      movieName = movieName.replace(/\s\(\d{4}\)/g, '').trim().toLowerCase();
+      // پاک‌سازی نام فیلم و تبدیل آن به کلمات کلیدی مجزا
+      // مثلاً "The Dark Knight" تبدیل می‌شود به آرایه‌ای شامل ["the", "dark", "knight"]
+      const cleanName = movieName.replace(/[^a-zA-Z0-9\s]/g, '').toLowerCase();
+      const keywords = cleanName.split(/\s+/).filter(word => word.length > 2); // کلمات کوتاه زیر ۲ حرف حذف می‌شوند تا سرچ اشتباه نشود
 
-      // ۲. خواندن مستقیم فایل آرشیو بزرگی که فرستادی
+      // ۲. خواندن فایل آرشیو بزرگ
       const archiveUrl = "https://dls2.aparatchi-dlcenter.top/DonyayeSerial/donyaye_serial_all_archive.html";
       const archiveResponse = await axios.get(archiveUrl, { 
         headers: { 'User-Agent': 'Mozilla/5.0' }, 
@@ -42,28 +44,32 @@ app.get('/stream/:type/:id.json', async (req, res) => {
       
       const $ = cheerio.load(archiveResponse.data);
 
-      // ۳. گشتن در تمام لینک‌های فایل آرشیو
+      // ۳. گشتن هوشمند در تمام لینک‌های فایل آرشیو
       $('a').each((index, element) => {
         let link = $(element).attr('href');
         let text = $(element).text().trim().toLowerCase();
 
-        // چک کردن اینکه آیا لینک حاوی اسم فیلم هست و فرمت ویدیویی دارد یا خیر
-        if (link && text.includes(movieName) && (link.includes('.mkv') || link.includes('.mp4'))) {
+        if (link && (link.includes('.mkv') || link.includes('.mp4'))) {
           
-          // حل مشکل لینک‌های نسبی در آرشیو
-          if (link.startsWith('//')) link = 'https:' + link;
-          if (!link.startsWith('http')) {
-            link = 'https://dls2.aparatchi-dlcenter.top/DonyayeSerial/' + link;
-          }
+          // بررسی اینکه آیا تمام کلمات کلیدی اسم فیلم در متن لینک موجود است یا خیر
+          const isMatch = keywords.every(keyword => text.includes(keyword) || link.toLowerCase().includes(keyword));
 
-          streams.push({
-            name: `Donyaye Serial`,
-            title: $(element).text().trim() || "پخش مستقیم فیلم",
-            url: link,
-            behaviorHints: {
-              notWebReady: link.includes('.mkv')
+          if (isMatch) {
+            // حل مشکل لینک‌های نسبی در آرشیو
+            if (link.startsWith('//')) link = 'https:' + link;
+            if (!link.startsWith('http')) {
+              link = 'https://dls2.aparatchi-dlcenter.top/DonyayeSerial/' + link;
             }
-          });
+
+            streams.push({
+              name: `Donyaye Serial`,
+              title: $(element).text().trim() || "پخش مستقیم فیلم",
+              url: link,
+              behaviorHints: {
+                notWebReady: link.includes('.mkv')
+              }
+            });
+          }
         }
       });
     }
