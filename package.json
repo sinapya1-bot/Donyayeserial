@@ -1,0 +1,14 @@
+{
+  "name": "donyaye-serial-addon",
+  "version": "1.0.0",
+  "description": "Stremio Addon for Donyaye Serial",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "axios": "^1.7.2",
+    "cheerio": "^1.0.0-rc.12"
+  }
+}
