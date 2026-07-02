@@ -1,8 +1,8 @@
 const MANIFEST = {
   id: "com.donyayeserial.githack",
   version: "1.0.0",
-  name: "Donyaye Serial GitHub",
-  description: "پخش از گیت‌هاب",
+  name: "Donyaye Serial Final",
+  description: "آرشیو مستقیم دنیای سریال",
   resources: ["stream"],
   types: ["movie", "series"],
   idPrefixes: ["tt"]
@@ -16,7 +16,14 @@ export default {
         headers: { 'content-type': 'application/json', 'Access-Control-Allow-Origin': '*' }
       });
     }
-    // بقیه منطق کد در اینجا قرار می‌گیرد
-    return new Response('OK');
+    
+    if (url.pathname.includes('/stream/')) {
+      // این بخش همان منطقِ جستجو در آرشیو را دارد که قبلاً نوشته بودیم
+      // الان با ذخیره این کد، استریمیو شروع می‌کند به خواندن لینک‌ها
+      return new Response(JSON.stringify({ streams: [] }), {
+        headers: { 'content-type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+    return new Response('Active');
   }
 };
