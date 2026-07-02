@@ -20,12 +20,11 @@ const MANIFEST = {
 app.get('/', (req, res) => res.send('Addon Ready!'));
 app.get('/manifest.json', (req, res) => res.json(MANIFEST));
 
-// اصلاح ساختار مسیر برای هماهنگی ۱۰۰٪ با درخواست‌های استریمیو
-app.get('/stream/:type/:id', async (req, res) => {
+// تعریف تابع اصلی هندل کردن استریم‌ها
+const handleStreamRequest = async (req, res) => {
   const { type } = req.params;
   let id = req.params.id;
   
-  // حذف حتمی .json از ته آدرس
   if (id.endsWith('.json')) {
     id = id.replace('.json', '');
   }
@@ -33,7 +32,7 @@ app.get('/stream/:type/:id', async (req, res) => {
   const targetImdbId = id.split(':')[0].toLowerCase();
   const streams = [];
 
-  console.log(`\n[REQUEST] Type: ${type} | IMDb ID: ${targetImdbId}`);
+  console.log(`\n[!!! REQUEST RECEIVED !!!] Type: ${type} | IMDb ID: ${targetImdbId}`);
 
   try {
     const archiveUrl = "https://dls2.aparatchi-dlcenter.top/DonyayeSerial/donyaye_serial_all_archive.html";
@@ -44,13 +43,11 @@ app.get('/stream/:type/:id', async (req, res) => {
     
     const $ = cheerio.load(archiveResponse.data);
     const htmlContent = $.html();
-    
-    // جدا کردن متن فیلم‌ها
     const movieBlocks = htmlContent.split(/(?=\d+\.\s+)/i);
 
     for (const block of movieBlocks) {
       if (block.toLowerCase().includes(targetImdbId)) {
-        console.log(`[FOUND] Matching block for ${targetImdbId}`);
+        console.log(`[SUCCESS] Found matching block for ${targetImdbId}`);
         const $block = cheerio.load(block);
         
         $block('a').each((i, el) => {
@@ -59,7 +56,6 @@ app.get('/stream/:type/:id', async (req, res) => {
 
           if (link && (link.includes('.mkv') || link.includes('.mp4') || link.includes('dl'))) {
             
-            // فیلتر سریال
             if (type === 'series' && id.includes(':')) {
               const parts = id.split(':');
               const season = parts[1].padStart(2, '0');
@@ -83,17 +79,20 @@ app.get('/stream/:type/:id', async (req, res) => {
             });
           }
         });
-        break; // بلوک پیدا شد، خارج شو
+        break;
       }
     }
 
-    console.log(`[RESPONSE] Injected links count: ${streams.length}`);
+    console.log(`[RESPONSE] Sending ${streams.length} links to Stremio`);
     res.json({ streams });
   } catch (e) {
     console.log(`[ERROR] : ${e.message}`);
     res.json({ streams: [] });
   }
-});
+};
 
-app.listen(PORT, () => console.log('Scraper is fully running...'));
+// هم مسیر استاندارد استریمیو و هم مسیر بدون /stream را گوش می‌دهد
+app.get('/stream/:type/:id', handleStreamRequest);
+app.get('/:type/:id', handleStreamRequest);
 
+app.listen(PORT, () => console.log('Scraper endpoints are ready...'));
