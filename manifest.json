@@ -1,0 +1,9 @@
+{
+  "id": "com.donyayeserial.addon",
+  "version": "1.0.0",
+  "name": "Donyaye Serial",
+  "description": "استریم مستقیم فیلم و سریال از سایت دنیای سریال",
+  "resources": ["stream"],
+  "types": ["movie", "series"],
+  "idPrefixes": ["tt"]
+}
